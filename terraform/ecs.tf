@@ -7,9 +7,9 @@ resource "aws_ecs_task_definition" "strapi" {
   family                   = "strapi"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "1024"
-  memory                   = "2048"
-
+  cpu                      = "2048"
+  memory                   = "4096"
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   container_definitions = jsonencode([
     {
       name      = "strapi-db"
@@ -34,8 +34,18 @@ resource "aws_ecs_task_definition" "strapi" {
           containerPort = 5432
           protocol      = "tcp"
         }
-      ]
+      ],
+      logConfiguration : {
+        logDriver = "awslogs",
+        options = {
+          #awslogs-create-group  = "true",
+          awslogs-group         = aws_cloudwatch_log_group.strapi_db.name,
+          awslogs-region        = "ap-northeast-1",
+          awslogs-stream-prefix = "awslogs-db"
+        }
+      }
     },
+
     {
       name      = "strapi-server"
       image     = "arunrascall/strapi:development1" # Replace with your Docker image if it's different
@@ -76,6 +86,44 @@ resource "aws_ecs_task_definition" "strapi" {
           protocol      = "tcp"
         }
       ]
+      logConfiguration : {
+        logDriver = "awslogs",
+        options = {
+          #awslogs-create-group  = "true",
+          awslogs-group         = aws_cloudwatch_log_group.strapi_server.name,
+          awslogs-region        = "ap-northeast-1",
+          awslogs-stream-prefix = "awslogs-strapi1"
+        }
+      }
+    },
+    {
+      name      = "strapi-nginx"
+      image     = "arunrascall/strapi-nginx:development"
+      essential = true
+      dependsOn = [{
+        containerName = "strapi-server"
+        condition     = "START"
+      }],
+      portMappings = [
+        {
+          containerPort = 443
+          protocol      = "tcp"
+        },
+
+        {
+          containerPort = 80
+          protocol      = "tcp"
+        }
+      ],
+      logConfiguration = {
+        logDriver = "awslogs",
+        options = {
+          #awslogs-create-group  = "true",
+          awslogs-group         = aws_cloudwatch_log_group.strapi_nginx.name,
+          awslogs-region        = "ap-northeast-1",
+          awslogs-stream-prefix = "awslogs-nginx"
+        }
+      }
     }
   ])
 }
@@ -93,39 +141,4 @@ resource "aws_ecs_service" "strapi_service" {
     assign_public_ip = true
   }
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.strapi_tg.arn
-    container_name   = "strapi-server"
-    container_port   = 1337
-  }
-
-}
-
-resource "aws_lb" "strapi_lb" {
-  name               = "strapi-lb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.strapi-sg.id]
-  subnets            = [aws_subnet.public_subnet1.id,aws_subnet.public_subnet2.id] # Replace with your subnets
-}
-
-resource "aws_lb_target_group" "strapi_tg" {
-
-
-  name     = "strapi-target-group"
-  port     = 1337
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
-  target_type = "ip"
-}
-
-resource "aws_lb_listener" "listener" {
-  load_balancer_arn = aws_lb.strapi_lb.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.strapi_tg.arn
-  }
 }

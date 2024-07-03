@@ -12,7 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - /opt:/var/lib/postgsql/data
-  strapi:
+  strapi-server:
     image: arunrascall/strapi:development1
     container_name: strapi-server
     environment:
@@ -26,3 +26,11 @@ services:
       - "1337:1337"
     depends_on:
       - strapi-db
+  nginx:
+    image: arunrascall/strapi-nginx:development
+    container_name: strapi-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - strapi-server
